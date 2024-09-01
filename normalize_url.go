@@ -3,19 +3,20 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"strings"
 )
 
-func NormalizeURL(urlStr string) (string, error) {
-	usrStruct, err := url.Parse(urlStr)
+func normalizeURL(rawURL string) (string, error) {
+	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("couldn't parse URL: %w", err)
 	}
 
-	if usrStruct.Scheme != "http" && usrStruct.Scheme != "https" {
-		return "", fmt.Errorf("invalid URL: %s", urlStr)
-	}
+	fullPath := parsedURL.Host + parsedURL.Path
 
-	normUrl := fmt.Sprintf("%s%s", usrStruct.Host, usrStruct.Path)
+	fullPath = strings.ToLower(fullPath)
 
-	return normUrl, nil
+	fullPath = strings.TrimSuffix(fullPath, "/")
+
+	return fullPath, nil
 }

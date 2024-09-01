@@ -3,45 +3,33 @@ package main
 import (
 	"fmt"
 	"os"
-	"sort"
 )
 
 func main() {
-	argsWithoutProg := os.Args[1:]
-	if len(argsWithoutProg) == 0 {
+	if len(os.Args) < 2 {
 		fmt.Println("no website provided")
-		os.Exit(1)
+		return
 	}
-	if len(argsWithoutProg) > 1 {
+	if len(os.Args) > 2 {
 		fmt.Println("too many arguments provided")
-		os.Exit(1)
+		return
 	}
-	baseUrl := argsWithoutProg[0]
-	fmt.Println("starting crawler of:", baseUrl)
-	pages := make(map[string]int)
-	pages, err := crawlPage(baseUrl, baseUrl, pages)
+	rawBaseURL := os.Args[1]
+
+	const maxConcurrency = 3
+	cfg, err := configure(rawBaseURL, maxConcurrency)
 	if err != nil {
-		fmt.Println("error crawling page:", err)
-		os.Exit(1)
+		fmt.Printf("Error - configure: %v", err)
+		return
 	}
 
-	// Create a slice to hold the map keys and values
-	type kv struct {
-		Key   string
-		Value int
-	}
-	var sortedPages []kv
-	for k, v := range pages {
-		sortedPages = append(sortedPages, kv{k, v})
-	}
+	fmt.Printf("starting crawl of: %s...\n", rawBaseURL)
 
-	// Sort the slice based on the counts
-	sort.Slice(sortedPages, func(i, j int) bool {
-		return sortedPages[i].Value > sortedPages[j].Value
-	})
+	cfg.wg.Add(1)
+	go cfg.crawlPage(rawBaseURL)
+	cfg.wg.Wait()
 
-	// Print the sorted results
-	for _, page := range sortedPages {
-		fmt.Println(page.Key, page.Value)
+	for normalizedURL, count := range cfg.pages {
+		fmt.Printf("%d - %s\n", count, normalizedURL)
 	}
 }

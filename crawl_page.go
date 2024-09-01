@@ -5,48 +5,49 @@ import (
 	"net/url"
 )
 
-func crawlPage(rawBaseUrl, rawCurrentUrl string, pages map[string]int) (map[string]int, error) {
-	// Get the HTML content of the current page
-	htmlStr, err := getHTML(rawCurrentUrl)
+func (cfg *config) crawlPage(rawCurrentURL string) {
+	cfg.concurrencyControl <- struct{}{}
+	defer func() {
+		<-cfg.concurrencyControl
+		cfg.wg.Done()
+	}()
+
+	currentURL, err := url.Parse(rawCurrentURL)
 	if err != nil {
-		return nil, err
+		fmt.Printf("Error - crawlPage: couldn't parse URL '%s': %v\n", rawCurrentURL, err)
+		return
 	}
 
-	// Extract all the URLs from the HTML
-	curUrlStrs, err := getURLsFromHTML(htmlStr, rawBaseUrl)
+	// skip other websites
+	if currentURL.Hostname() != cfg.baseURL.Hostname() {
+		return
+	}
+
+	normalizedURL, err := normalizeURL(rawCurrentURL)
 	if err != nil {
-		return nil, err
+		fmt.Printf("Error - normalizedURL: %v", err)
 	}
 
-	// Parse the base URL once
-	baseUrl, err := url.Parse(rawBaseUrl)
+	isFirst := cfg.addPageVisit(normalizedURL)
+	if !isFirst {
+		return
+	}
+
+	fmt.Printf("crawling %s\n", rawCurrentURL)
+
+	htmlBody, err := getHTML(rawCurrentURL)
 	if err != nil {
-		return nil, err
+		fmt.Printf("Error - getHTML: %v", err)
+		return
 	}
 
-	// Iterate over extracted URLs
-	for _, curUrlStr := range curUrlStrs {
-		curUrl, err := url.Parse(curUrlStr)
-		if err != nil {
-			fmt.Println("Skipping invalid URL:", curUrlStr)
-			continue // Skip this URL if parsing fails
-		}
-
-		// Only crawl pages from the same domain
-		if _, ok := pages[curUrlStr]; !ok {
-			pages[curUrlStr] = 1 // Initialize page count
-			if baseUrl.Host == curUrl.Host {
-				// Recursively crawl the new page
-				_, err := crawlPage(rawBaseUrl, curUrlStr, pages)
-				if err != nil {
-					fmt.Println("Error crawling page:", curUrlStr)
-					continue
-				}
-			}
-		} else {
-			// Increment page count if already visited
-			pages[curUrlStr]++
-		}
+	nextURLs, err := getURLsFromHTML(htmlBody, cfg.baseURL)
+	if err != nil {
+		fmt.Printf("Error - getURLsFromHTML: %v", err)
 	}
-	return pages, nil
+
+	for _, nextURL := range nextURLs {
+		cfg.wg.Add(1)
+		go cfg.crawlPage(nextURL)
+	}
 }

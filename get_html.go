@@ -4,39 +4,30 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
-func getHTML(website string) (string, error) {
-	currentURL, err := url.Parse(website)
+func getHTML(rawURL string) (string, error) {
+	res, err := http.Get(rawURL)
 	if err != nil {
-		return "", fmt.Errorf("couldn't parse URL: %v", err)
+		return "", fmt.Errorf("got Network error: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode > 399 {
+		return "", fmt.Errorf("got HTTP error: %s", res.Status)
 	}
 
-	if currentURL.Scheme != "http" && currentURL.Scheme != "https" {
-		return "", fmt.Errorf("invalid URL: %s", website)
-	}
-
-	resp, err := http.Get(website)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode > 299 {
-		return "", fmt.Errorf("HTTP status code %d", resp.StatusCode)
-	}
-
-	contentType := resp.Header.Get("Content-Type")
+	contentType := res.Header.Get("Content-Type")
 	if !strings.Contains(contentType, "text/html") {
-		return "", fmt.Errorf("unexpected content type: %s", contentType)
+		return "", fmt.Errorf("got non-HTML response: %s", contentType)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	htmlBodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", fmt.Errorf("couldn't read response body: %v", err)
 	}
 
-	return string(body), nil
+	htmlBody := string(htmlBodyBytes)
+	return htmlBody, nil
 }
